@@ -39,6 +39,9 @@ jobs:
                 echo "Docker is not installed or not in PATH"
             fi
 
+      - name: Pull Docker images
+        run: |
+          docker pull eqlabs/pathfinder:latest
 
       - name: Rust setup
         uses: ./.github/actions/setup-rust
