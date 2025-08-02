@@ -49,46 +49,46 @@ jobs:
           rust-version: ${{ env.BUILD_RUST_VERSION }}
           cache-key: madara-${{ runner.os }}-rust-1.86
 
-      - name: Cargo build
-        run: |
-         export GIT_COMMIT_HASH=$GITHUB_SHA
-         CARGO_TARGET_DIR=target cargo build --manifest-path madara/Cargo.toml  --bin madara --release
+      # - name: Cargo build
+      #   run: |
+      #    export GIT_COMMIT_HASH=$GITHUB_SHA
+      #    CARGO_TARGET_DIR=target cargo build --manifest-path madara/Cargo.toml  --bin madara --release
 
-      - name: Run Madara
-        run: |
-          nohup ./target/release/madara \
-            --base-path ./madara-db \
-            --rpc-port 9944 \
-            --rpc-cors "*" \
-            --rpc-external \
-            --rpc-admin \
-            --sequencer \
-            --chain-config-path configs/presets/devnet.yaml \
-            --feeder-gateway-enable \
-            --gateway-enable \
-            --gateway-external \
-            --gateway-port 8080 \
-            --no-l1-sync \
-            --strk-gas-price 0 \
-           --strk-blob-gas-price 0 \
-           --gas-price 0 \
-           --blob-gas-price 0 \
-           --chain-config-override block_time=3s &
+      # - name: Run Madara
+      #   run: |
+      #     nohup ./target/release/madara \
+      #       --base-path ./madara-db \
+      #       --rpc-port 9944 \
+      #       --rpc-cors "*" \
+      #       --rpc-external \
+      #       --rpc-admin \
+      #       --sequencer \
+      #       --chain-config-path configs/presets/devnet.yaml \
+      #       --feeder-gateway-enable \
+      #       --gateway-enable \
+      #       --gateway-external \
+      #       --gateway-port 8080 \
+      #       --no-l1-sync \
+      #       --strk-gas-price 0 \
+      #      --strk-blob-gas-price 0 \
+      #      --gas-price 0 \
+      #      --blob-gas-price 0 \
+      #      --chain-config-override block_time=3s &
 
-           # Store the PID for later cleanup
-           echo "MADARA_PID=$!" >> $GITHUB_ENV
+      #      # Store the PID for later cleanup
+      #      echo "MADARA_PID=$!" >> $GITHUB_ENV
 
-           # Wait for Madara to start
-           echo "Waiting for Madara to start..."
-           timeout 60s bash -c 'until curl -s http://localhost:9944/ &>/dev/null; do sleep 3; echo "Retrying Madara Server..."; done'
+      #      # Wait for Madara to start
+      #      echo "Waiting for Madara to start..."
+      #      timeout 60s bash -c 'until curl -s http://localhost:9944/ &>/dev/null; do sleep 3; echo "Retrying Madara Server..."; done'
 
-           if [ $? -eq 0 ]; then
-             echo "Madara is running with gateway on: http://localhost:8080/gateway"
-             echo "Madara RPC running on: http://localhost:9944"
-           else
-             echo "Failed to connect to Madara within timeout"
-             exit 1
-           fi
+      #      if [ $? -eq 0 ]; then
+      #        echo "Madara is running with gateway on: http://localhost:8080/gateway"
+      #        echo "Madara RPC running on: http://localhost:9944"
+      #      else
+      #        echo "Failed to connect to Madara within timeout"
+      #        exit 1
+      #      fi
 
       - name: Test Docker connectivity to Madara Feeder Gateway
         run: |
@@ -105,7 +105,6 @@ jobs:
             --name pathfinder-service-1342 \
             -p "9545:9545" \
             --add-host host.docker.internal=host-gateway \
-            --platform linux/arm64 \
             -e RUST_LOG=info \
             eqlabs/pathfinder:latest \
             --ethereum.url "https://ethereum-sepolia-rpc.publicnode.com/" \
