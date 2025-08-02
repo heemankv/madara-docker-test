@@ -100,7 +100,6 @@ jobs:
 
       - name: Run Pathfinder
         run: |
-          echo "Running Pathfinder..."
           nohup docker run --rm \
             --name pathfinder-service-1342 \
             -p "9545:9545" \
@@ -114,11 +113,21 @@ jobs:
             --gateway-url "http://host.docker.internal:8080/gateway" \
             --feeder-gateway-url "http://host.docker.internal:8080/feeder_gateway" \
             --storage.state-tries "archive" \
-            --gateway.request-timeout "1000"
+            --gateway.request-timeout "1000" &
+
+          # Store the container name for later cleanup
+          echo "PATHFINDER_CONTAINER=pathfinder-service-1342" >> $GITHUB_ENV
 
           # Wait for Pathfinder to start
           echo "Waiting for Pathfinder to start..."
           timeout 60s bash -c 'until curl -s http://localhost:9545/ &>/dev/null; do sleep 3; echo "Retrying Pathfinder Server..."; done'
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Pathfinder is running on: http://localhost:9545"
+          else
+            echo "❌ Failed to connect to Pathfinder within timeout"
+            exit 1
+          fi
 
       - name: Validate Pathfinder
         run: |
@@ -132,9 +141,9 @@ jobs:
               "method": "starknet_blockNumber",
               "params": []
           }')
-          
+
           echo "Response: $response"
-          
+
           # Check if response contains expected fields
           if echo "$response" | grep -q '"result"'; then
             echo "✅ Pathfinder is responding correctly"
@@ -150,5 +159,13 @@ jobs:
             echo "Stopping Madara (PID: $MADARA_PID)"
             kill $MADARA_PID || true
           fi
+          
+          if [ ! -z "$PATHFINDER_CONTAINER" ]; then
+            echo "Stopping Pathfinder container: $PATHFINDER_CONTAINER"
+            docker stop $PATHFINDER_CONTAINER || true
+          fi
+          
           # Clean up any remaining processes
           pkill -f madara || true
+          # Clean up any remaining pathfinder containers
+          docker ps -q --filter "name=pathfinder-service" | xargs -r docker stop || true
