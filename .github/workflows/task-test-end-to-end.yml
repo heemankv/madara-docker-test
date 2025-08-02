@@ -101,7 +101,7 @@ jobs:
       - name: Run Pathfinder
         run: |
           echo "Running Pathfinder..."
-          docker run --rm \
+          nohup docker run --rm \
             --name pathfinder-service-1342 \
             -p "9545:9545" \
             --add-host host.docker.internal=host-gateway \
@@ -116,9 +116,32 @@ jobs:
             --storage.state-tries "archive" \
             --gateway.request-timeout "1000"
 
-          # Wait for Madara to start
-          echo "Waiting for Madara to start..."
+          # Wait for Pathfinder to start
+          echo "Waiting for Pathfinder to start..."
           timeout 60s bash -c 'until curl -s http://localhost:9545/ &>/dev/null; do sleep 3; echo "Retrying Pathfinder Server..."; done'
+
+      - name: Validate Pathfinder
+        run: |
+          echo "Validating Pathfinder..."
+          response=$(curl --fail --location 'http://localhost:9545/rpc/v0_7' \
+          --header 'accept: application/json' \
+          --header 'content-type: application/json' \
+          --data '{
+              "id": 1,
+              "jsonrpc": "2.0",
+              "method": "starknet_blockNumber",
+              "params": []
+          }')
+          
+          echo "Response: $response"
+          
+          # Check if response contains expected fields
+          if echo "$response" | grep -q '"result"'; then
+            echo "✅ Pathfinder is responding correctly"
+          else
+            echo "❌ Pathfinder response is invalid"
+            exit 1
+          fi
 
       - name: Cleanup processes
         if: always()
