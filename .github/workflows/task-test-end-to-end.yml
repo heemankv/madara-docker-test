@@ -1,0 +1,152 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/github-workflow.json
+name: Task - Test E2E
+
+# This workflow runs end-to-end tests for the Madara System
+# against the Madara, Orchestrator, Bootstrapper binaries to ensure e2e testing
+on:
+ workflow_dispatch:
+ workflow_call:
+
+jobs:
+ e2e-full:
+   runs-on: ubuntu-latest
+
+   steps:
+     - name: Checkout Repository
+       uses: actions/checkout@v4
+
+     - name: Load env
+       uses: ./.github/actions/load-env
+
+     - name: Foundry setup
+       uses: ./.github/actions/setup-foundry
+       with:
+         foundry-version: ${{ env.BUILD_FOUNDRY_VERSION }}
+
+     - name: Docker login
+       run: |
+         echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+     - name: Check Docker Installation
+       run: |
+         if command -v docker &> /dev/null
+           then
+               echo "Docker is installed. Version information:"
+               docker --version
+               echo "Checking if Docker daemon is running:"
+               if docker info &> /dev/null
+               then
+                   echo "✅ Docker daemon is running"
+               else
+                   echo "❌ Docker daemon is not running"
+               fi
+           else
+               echo "Docker is not installed or not in PATH"
+           fi
+
+     - name: Check Forge Installation
+       run: |
+         if command -v forge &> /dev/null
+         then
+             echo "Forge is installed. Version information:"
+             forge --version
+         else
+             echo "Forge is not installed or not in PATH"
+             exit 1
+         fi
+
+     - name: Check Anvil Installation
+       run: |
+         if command -v anvil &> /dev/null
+         then
+             echo "Anvil is installed. Version information:"
+             anvil --version
+         else
+             echo "Anvil is not installed or not in PATH"
+             exit 1
+         fi
+
+     - name: Start Anvil with fork
+       run: |
+         nohup anvil \
+           --host 0.0.0.0 \
+           --block-time 1 \
+           --port ${{ env.ANVIL_DEFAULT_PORT }} &
+
+         # Store the PID for later cleanup
+         echo "ANVIL_PID=$!" >> $GITHUB_ENV
+
+         # Wait for Anvil to start
+         echo "Waiting for Anvil to start..."
+         timeout 30s bash -c 'until curl -s -X POST --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[],\"id\":1}" -H "Content-Type: application/json" ${{ env.ANVIL_DEFAULT_URL }} &>/dev/null; do sleep 2; echo "Retrying..."; done'
+
+         if [ $? -eq 0 ]; then
+           echo "Anvil is running in url: ${{ env.ANVIL_DEFAULT_URL }}"
+         else
+           echo "Failed to connect to Anvil within timeout"
+           exit 1
+         fi
+
+     - name: Rust setup
+       uses: ./.github/actions/setup-rust
+       with:
+         rust-version: ${{ env.BUILD_RUST_VERSION }}
+         cache-key: madara-${{ runner.os }}-rust-1.86
+
+     - name: Cargo build
+       run: |
+        export GIT_COMMIT_HASH=$GITHUB_SHA
+        CARGO_TARGET_DIR=target cargo build --manifest-path madara/Cargo.toml  --bin madara --release
+
+     - name: Run Madara
+       run: |
+         nohup ./target/release/madara \
+           --base-path ./madara-db \
+           --rpc-port 9944 \
+           --rpc-cors "*" \
+           --rpc-external \
+           --rpc-admin \
+           --sequencer \
+           --chain-config-path configs/madara.yml \
+           --feeder-gateway-enable \
+           --gateway-enable \
+           --gateway-external \
+           --gateway-port 8080 \
+           --no-l1-sync \
+           --strk-gas-price 0 \
+          --strk-blob-gas-price 0 \
+          --gas-price 0 \
+          --blob-gas-price 0 \
+          --chain-config-override block_time=3s &
+
+          # Store the PID for later cleanup
+          echo "MADARA_PID=$!" >> $GITHUB_ENV
+
+          # Wait for Madara to start
+          echo "Waiting for Madara to start..."
+          timeout 60s bash -c 'until curl -s http://localhost:8080/gateway &>/dev/null; do sleep 3; echo "Retrying Madara gateway..."; done'
+
+          if [ $? -eq 0 ]; then
+            echo "Madara is running with gateway on: http://localhost:8080/gateway"
+            echo "Madara RPC running on: http://localhost:9944"
+          else
+            echo "Failed to connect to Madara within timeout"
+            exit 1
+          fi
+
+     - name: Test Docker connectivity to Anvil
+       env:
+          ANVIL_URL: "http://host.docker.internal:8545"
+          JSON_DATA: '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+       run: |
+          echo "Testing Docker connectivity to Anvil at $ANVIL_URL..."
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            -e ANVIL_URL="$ANVIL_URL" \
+            -e JSON_DATA="$JSON_DATA" \
+            curlimages/curl:latest \
+            curl -v --connect-timeout 10 --max-time 30 -X POST \
+            --data "$JSON_DATA" \
+            -H "Content-Type: application/json" \
+              "$ANVIL_URL" || echo "Curl failed with exit code $?"
