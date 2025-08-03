@@ -28,7 +28,7 @@ jobs:
 
       - name: Run Pathfinder
         run: |
-          RUST_LOG=debug ./pathfinder --ethereum.url "https://ethereum-sepolia-rpc.publicnode.com/" \
+          RUST_LOG=debug ./target/release/pathfinder --ethereum.url "https://ethereum-sepolia-rpc.publicnode.com/" \
             --http-rpc "0.0.0.0:9545" \
             --rpc.root-version "v07" \
             --network "custom" \
