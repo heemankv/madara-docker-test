@@ -18,6 +18,25 @@ jobs:
       - name: Load env
         uses: ./.github/actions/load-env
 
+      - name: Download and extract Pathfinder binary
+        run: |
+          curl -L -o pathfinder.tar.gz https://github.com/eqlabs/pathfinder/releases/download/v0.18.0/pathfinder-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf pathfinder.tar.gz -C target/release/
+          chmod +x target/release/pathfinder
+          rm pathfinder.tar.gz
+
+      - name: Run Pathfinder
+        run: |
+          RUST_LOG=debug ./pathfinder --ethereum.url "https://ethereum-sepolia-rpc.publicnode.com/" \
+            --http-rpc "0.0.0.0:9545" \
+            --rpc.root-version "v07" \
+            --network "custom" \
+            --chain-id "MADARA_DEVNET" \
+            --gateway-url "http://localhost:8080/feeder" \
+            --feeder-gateway-url "http://localhost:8080/feeder_gateway" \
+            --storage.state-tries "archive" \
+            --gateway.request-timeout "1000"
+
       - name: Docker login
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
@@ -159,12 +178,12 @@ jobs:
             echo "Stopping Madara (PID: $MADARA_PID)"
             kill $MADARA_PID || true
           fi
-          
+
           if [ ! -z "$PATHFINDER_CONTAINER" ]; then
             echo "Stopping Pathfinder container: $PATHFINDER_CONTAINER"
             docker stop $PATHFINDER_CONTAINER || true
           fi
-          
+
           # Clean up any remaining processes
           pkill -f madara || true
           # Clean up any remaining pathfinder containers
